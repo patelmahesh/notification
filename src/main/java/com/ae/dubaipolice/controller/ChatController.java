@@ -1,29 +1,29 @@
 package com.ae.dubaipolice.controller;
 
 import com.ae.dubaipolice.model.ChatMessage;
-import java.util.List;
-import java.util.stream.Collectors;
+import com.ae.dubaipolice.util.ParticipantRepository;
+import java.util.Map;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.MessageExceptionHandler;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.messaging.handler.annotation.SendTo;
 import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
-import org.springframework.messaging.simp.SimpMessageSendingOperations;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.messaging.simp.annotation.SendToUser;
-import org.springframework.messaging.simp.user.SimpUser;
-import org.springframework.messaging.simp.user.SimpUserRegistry;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.messaging.simp.annotation.SubscribeMapping;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.socket.WebSocketSession;
 
-@RestController
+@Controller
 public class ChatController {
 
     @Autowired
-    private  SimpUserRegistry simpUserRegistry;
+    private ParticipantRepository participantRepository;
 
     @Autowired
-    private SimpMessageSendingOperations messagingTemplate;
+    private SimpMessagingTemplate messagingTemplate;
 
     @MessageMapping("/sendMessage")
     @SendTo("/topic/public")
@@ -37,14 +37,26 @@ public class ChatController {
             SimpMessageHeaderAccessor headerAccessor) {
         // Add username in web socket session
         headerAccessor.getSessionAttributes().put("username", chatMessage.getSender());
-        
+
         return chatMessage;
     }
 
-    @MessageMapping("/reply")
+    @MessageMapping("/reply/{sessionId}")
     @SendToUser("/queue/reply")
-    public void sendSpecific(@Payload ChatMessage chatMessage) {
-        messagingTemplate.convertAndSendToUser(chatMessage.getSender(), "/reply", chatMessage);
+    public void sendSpecific(@Payload ChatMessage chatMessage, @DestinationVariable("sessionId") String sessionId) {
+        
+        
+        /*for (Map.Entry<String, String> entry : participantRepository.getActiveSessions().entrySet()) {
+            Object key = entry.getKey();
+            Object value = entry.getValue();
+            for (int i = 0; i < 4; i++) {
+                chatMessage.setContent(i + "" + value);
+                messagingTemplate.convertAndSend("/queue/reply-user" + key, chatMessage);
+            }
+        }*/
+
+        messagingTemplate.convertAndSend("/queue/reply-user" + sessionId, chatMessage);
+
     }
 
     @MessageExceptionHandler
@@ -53,11 +65,9 @@ public class ChatController {
         return exception.getMessage();
     }
 
-    @GetMapping("/ws/users")
-    public  List<String> getConnectedUsers() {
-        return simpUserRegistry.getUsers().stream()
-                .map(SimpUser::getName)
-                .collect(Collectors.toList());
+    @SubscribeMapping("/activeUsers")
+    public Map<String, String> getConnectedUsers() {
+        return participantRepository.getActiveSessions();
     }
 
 }

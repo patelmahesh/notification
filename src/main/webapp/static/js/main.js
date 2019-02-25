@@ -8,9 +8,11 @@ var messageInput = document.querySelector('#message');
 var messageArea = document.querySelector('#messageArea');
 var connectingElement = document.querySelector('.connecting');
 
+var connectedUsers = document.querySelector('#connectedUsers');
+
 var stompClient = null;
 var username = null;
-
+var sessionId = '';
 var colors = [
     '#2196F3', '#32c787', '#00BCD4', '#ff5652',
     '#ffc107', '#ff85af', '#FF9800', '#39bbb0'
@@ -26,10 +28,14 @@ function connect(event) {
         var socket = new SockJS('/ws');
         stompClient = Stomp.over(socket);
 
-        stompClient.connect({}, onConnected, onError);
+        stompClient.connect({user: username}, onConnected, onError);
+
+
+
     }
     event.preventDefault();
 }
+
 
 
 function onConnected() {
@@ -43,6 +49,28 @@ function onConnected() {
             )
 
     connectingElement.classList.add('hidden');
+
+    stompClient.subscribe('/app/activeUsers', getActiveUsers);
+
+}
+
+
+function getActiveUsers(payload) {
+    debugger;
+
+    var message = JSON.parse(payload.body);
+
+    for (var x in message) {
+        var messageElement = document.createElement('li');
+        var usernameElement = document.createElement('span');
+        var usernameText = document.createTextNode(message[x] + '-' + x);
+        usernameElement.appendChild(usernameText);
+        messageElement.appendChild(usernameElement);
+        connectedUsers.appendChild(messageElement);
+        sessionId = x;
+        stompClient.subscribe('/queue/reply-user' + x, onPrivateMessageReceived);
+    }
+
 }
 
 
@@ -118,8 +146,8 @@ function getAvatarColor(messageSender) {
 }
 
 function replyUser() {
-    stompClient.subscribe('/user/mahesh/queue/reply', onMessageReceived);
-    
+
+
     var messageContent = document.querySelector('#replyMessage').value.trim();
 
     if (messageContent && stompClient) {
@@ -129,9 +157,32 @@ function replyUser() {
             type: 'CHAT'
         };
 
-        stompClient.send("/app/reply", {}, JSON.stringify(chatMessage));
+        stompClient.send("/app/reply/" + sessionId, {}, JSON.stringify(chatMessage));
         document.querySelector('#replyMessage').value = '';
     }
+}
+
+function onPrivateMessageReceived(payload) {
+    var message = JSON.parse(payload.body);
+
+    var messageElement = document.createElement('li');
+
+
+    messageElement.classList.add('chat-message');
+
+    var usernameElement = document.createElement('span');
+    var usernameText = document.createTextNode(message.sender);
+    usernameElement.appendChild(usernameText);
+    messageElement.appendChild(usernameElement);
+
+    var textElement = document.createElement('p');
+    var messageText = document.createTextNode(message.content);
+    textElement.appendChild(messageText);
+
+    messageElement.appendChild(textElement);
+
+    messageArea.appendChild(messageElement);
+    messageArea.scrollTop = messageArea.scrollHeight;
 }
 
 usernameForm.addEventListener('submit', connect, true)
